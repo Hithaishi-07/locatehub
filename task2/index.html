@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocateHub • Nearby Services</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    #map { height: 500px; }
+    .service-card {
+      transition: all 0.3s ease;
+    }
+    .service-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <header class="bg-white border-b sticky top-0 z-50">
+      <div class="px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-2xl">📍</div>
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900">LocateHub</h1>
+            <p class="text-xs text-gray-500 -mt-1">Find what you need nearby</p>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-4">
+          <button onclick="getCurrentLocation()" 
+                  class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-2xl text-sm font-medium transition">
+            <i class="fas fa-location-dot"></i>
+            <span>My Location</span>
+          </button>
+          <div class="text-sm text-gray-500 flex items-center gap-1.5">
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            Live
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex flex-col lg:flex-row">
+      <!-- Sidebar -->
+      <div class="lg:w-96 bg-white border-r p-6 overflow-auto" style="height: calc(100vh - 73px)">
+        <div class="mb-6">
+          <input 
+            type="text" 
+            id="searchInput"
+            placeholder="Search services (cafe, hospital...)"
+            class="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-blue-500"
+            onkeyup="if(event.key === 'Enter') searchServices()">
+        </div>
+
+        <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button onclick="filterCategory('all')" class="category-btn active px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-2xl text-sm font-medium whitespace-nowrap" data-category="all">All</button>
+          <button onclick="filterCategory('food')" class="category-btn px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-2xl text-sm font-medium whitespace-nowrap" data-category="food">🍽️ Food</button>
+          <button onclick="filterCategory('health')" class="category-btn px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-2xl text-sm font-medium whitespace-nowrap" data-category="health">🏥 Health</button>
+          <button onclick="filterCategory('transport')" class="category-btn px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-2xl text-sm font-medium whitespace-nowrap" data-category="transport">🚕 Transport</button>
+          <button onclick="filterCategory('shopping')" class="category-btn px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-2xl text-sm font-medium whitespace-nowrap" data-category="shopping">🛍️ Shop</button>
+        </div>
+
+        <h2 class="font-semibold text-lg mb-4 flex items-center gap-2">
+          <span>Nearby Services</span>
+          <span id="resultCount" class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">12 found</span>
+        </h2>
+
+        <div id="servicesList" class="space-y-4">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Map Area -->
+      <div class="flex-1 relative">
+        <div id="map" class="w-full"></div>
+        
+        <!-- Map Controls -->
+        <div class="absolute top-6 right-6 bg-white rounded-3xl shadow-xl p-2 flex flex-col gap-2 z-10">
+          <button onclick="zoomIn()" class="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-2xl text-xl">+</button>
+          <button onclick="zoomOut()" class="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-2xl text-xl">−</button>
+        </div>
+
+        <div class="absolute bottom-6 left-6 bg-white rounded-3xl shadow-xl px-5 py-3 text-sm flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-user text-blue-600"></i>
+            <span id="status" class="font-medium">Hyderabad, India</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 bg-gray-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+    <span id="toastText"></span>
+  </div>
+
+  <script>
+    // Mock Data
+    let services = [
+      {
+        id: 1,
+        name: "Starbucks",
+        category: "food",
+        type: "Cafe",
+        distance: "0.4 km",
+        rating: 4.6,
+        lat: 17.3850,
+        lng: 78.4867,
+        address: "Banjara Hills, Hyderabad",
+        icon: "☕"
+      },
+      {
+        id: 2,
+        name: "Apollo Hospitals",
+        category: "health",
+        type: "Hospital",
+        distance: "1.2 km",
+        rating: 4.3,
+        lat: 17.3920,
+        lng: 78.4920,
+        address: "Jubilee Hills",
+        icon: "🏥"
+      },
+      {
+        id: 3,
+        name: "Uber Stand",
+        category: "transport",
+        type: "Ride",
+        distance: "0.2 km",
+        rating: 4.1,
+        lat: 17.3880,
+        lng: 78.4800,
+        address: "Road No. 2",
+        icon: "🚕"
+      },
+      {
+        id: 4,
+        name: "Reliance Fresh",
+        category: "shopping",
+        type: "Supermarket",
+        distance: "0.8 km",
+        rating: 4.0,
+        lat: 17.3800,
+        lng: 78.4750,
+        address: "Banjara Hills",
+        icon: "🛒"
+      },
+      {
+        id: 5,
+        name: "Paradise Biryani",
+        category: "food",
+        type: "Restaurant",
+        distance: "1.5 km",
+        rating: 4.7,
+        lat: 17.4100,
+        lng: 78.4600,
+        address: "Gachibowli",
+        icon: "🍛"
+      },
+      {
+        id: 6,
+        name: "Continental Hospital",
+        category: "health",
+        type: "Hospital",
+        distance: "2.1 km",
+        rating: 4.4,
+        lat: 17.3700,
+        lng: 78.5000,
+        address: "IT Park",
+        icon: "🏥"
+      }
+    ];
+
+    let map;
+    let markers = [];
+    let userMarker;
+    let currentLat = 17.385044;
+    let currentLng = 78.486671;
+
+    function initMap() {
+      map = L.map('map').setView([currentLat, currentLng], 15);
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // User location marker
+      userMarker = L.marker([currentLat, currentLng], {
+        icon: L.divIcon({
+          className: 'user-marker',
+          html: `<div style="background:#3b82f6; width:24px; height:24px; border-radius:50%; border:3px solid white; box-shadow:0 0 0 4px rgba(59,130,246,0.3);"></div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        })
+      }).addTo(map)
+        .bindPopup("<b>You are here</b>");
+    }
+
+    function addServiceMarkers(filteredServices) {
+      // Clear existing markers
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+
+      filteredServices.forEach(service => {
+        const marker = L.marker([service.lat, service.lng]).addTo(map);
+        
+        marker.bindPopup(`
+          <div class="text-sm">
+            <div class="font-bold">${service.icon} ${service.name}</div>
+            <div class="text-gray-600">${service.type} • ${service.distance}</div>
+            <div class="text-yellow-500">★ ${service.rating}</div>
+          </div>
+        `);
+        
+        markers.push(marker);
+      });
+    }
+
+    function renderServices(filteredServices) {
+      const container = document.getElementById('servicesList');
+      container.innerHTML = '';
+
+      if (filteredServices.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-12">No services found in this category.</p>`;
+        return;
+      }
+
+      filteredServices.forEach(service => {
+        const div = document.createElement('div');
+        div.className = `service-card bg-white border border-gray-200 rounded-3xl p-5 cursor-pointer`;
+        div.innerHTML = `
+          <div class="flex gap-4">
+            <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0">
+              ${service.icon}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between">
+                <div>
+                  <h3 class="font-semibold text-lg leading-none">${service.name}</h3>
+                  <p class="text-sm text-gray-500">${service.type}</p>
+                </div>
+                <div class="text-right">
+                  <div class="text-xs text-gray-400">${service.distance}</div>
+                  <div class="text-yellow-500 text-sm">★ ${service.rating}</div>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 mt-3 line-clamp-1">${service.address}</p>
+            </div>
+          </div>
+        `;
+        div.onclick = () => {
+          map.flyTo([service.lat, service.lng], 16);
+          markers.find(m => {
+            const latlng = m.getLatLng();
+            return Math.abs(latlng.lat - service.lat) < 0.001 && Math.abs(latlng.lng - service.lng) < 0.001;
+          })?.openPopup();
+        };
+        container.appendChild(div);
+      });
+
+      document.getElementById('resultCount').textContent = `${filteredServices.length} found`;
+    }
+
+    function filterCategory(category) {
+      document.querySelectorAll('.category-btn').forEach(btn => {
+        if (btn.dataset.category === category) {
+          btn.classList.add('active', 'bg-blue-100', 'text-blue-700');
+        } else {
+          btn.classList.remove('active', 'bg-blue-100', 'text-blue-700');
+        }
+      });
+
+      let filtered = services;
+      if (category !== 'all') {
+        filtered = services.filter(s => s.category === category);
+      }
+      renderServices(filtered);
+      addServiceMarkers(filtered);
+    }
+
+    function searchServices() {
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+      
+      if (!query) {
+        filterCategory('all');
+        return;
+      }
+
+      const filtered = services.filter(s => 
+        s.name.toLowerCase().includes(query) || 
+        s.type.toLowerCase().includes(query) ||
+        s.address.toLowerCase().includes(query)
+      );
+      
+      renderServices(filtered);
+      addServiceMarkers(filtered);
+    }
+
+    function getCurrentLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            currentLat = position.coords.latitude;
+            currentLng = position.coords.longitude;
+            
+            map.flyTo([currentLat, currentLng], 16);
+            userMarker.setLatLng([currentLat, currentLng]);
+            
+            showToast("✅ Location updated to your current position");
+            
+            // Simulate slight change in distances
+            services = services.map(s => ({
+              ...s,
+              distance: (Math.random() * 2 + 0.3).toFixed(1) + " km"
+            }));
+            filterCategory('all');
+          },
+          () => {
+            showToast("❌ Could not get your location. Using default.");
+          }
+        );
+      } else {
+        showToast("❌ Geolocation not supported");
+      }
+    }
+
+    function zoomIn() {
+      map.zoomIn();
+    }
+
+    function zoomOut() {
+      map.zoomOut();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastText').innerHTML = message;
+      toast.classList.remove('hidden');
+      toast.style.transform = 'translateY(0)';
+      
+      setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        setTimeout(() => toast.classList.add('hidden'), 300);
+      }, 3000);
+    }
+
+    // Initialize everything
+    window.onload = function() {
+      initMap();
+      renderServices(services);
+      addServiceMarkers(services);
+      
+      // Tailwind script already loaded
+      showToast("👋 Welcome to LocateHub! Click <b>My Location</b> to try geolocation.");
+    };
+  </script>
+</body>
+</html>
